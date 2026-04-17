@@ -14,5 +14,7 @@
     shellcheck.enable = true;
 
     rustfmt.enable = true;
+
+    oxfmt.enable = true;
   };
 }

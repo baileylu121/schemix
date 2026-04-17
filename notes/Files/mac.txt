@@ -1,0 +1,17 @@
+Here are the steps that I install and got to work on mac.  
+
+Install with homebrew in terminal:
+
+brew install flex
+
+brew install bison
+
+
+Use of flex on Mac
+
+    Create the file with end .l and cd to the location 
+    $lex filename.l, eg. lex fb1-1.l
+    $gcc lex.yy.c -ll (Here we have ll rather than lfl as in Mac there is libl.a rather than libfl.a, it compile with -ll)
+    $./a.out 
+    Short-cut for signal end of file: Ctrl+D+D  (need for the example file fb1-1.l)
+
