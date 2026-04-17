@@ -1,4 +1,9 @@
+use std::{fs::File, io::Read};
+
+use chumsky::Parser as ChumskyParser;
 use clap::Parser;
+use color_eyre::eyre::Result;
+use eyre::Context;
 
 /// Nix modules options DSL
 #[derive(Parser, Debug)]
@@ -13,9 +18,20 @@ struct Args {
     output: String,
 }
 
-fn main() {
+fn main() -> Result<()> {
     let args = Args::parse();
+    color_eyre::install()?;
 
-    println!("Input {}!", args.input);
-    println!("Output {}!", args.output);
+    let mut input = File::open(args.input).wrap_err("Could not open schemix input file")?;
+
+    let mut contents = String::new();
+    input
+        .read_to_string(&mut contents)
+        .wrap_err("Could not read schemix input file")?;
+
+    println!("{:?}", schemix::parser().parse(&contents));
+
+    // let mut output = File::create(args.output).wrap_err("Could not create schemix output file")?;
+
+    Ok(())
 }
