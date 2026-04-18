@@ -73,30 +73,38 @@ fn comment_parser<'src>() -> impl Parser<'src, &'src str, Expr<'src>> {
 // }
 //
 fn option_parser<'src>() -> impl Parser<'src, &'src str, MkOption<'src>> {
-    (description().or_not())
-        .then(visibility())
-        .then(internal())
-        .then(read_only())
+    description()
+        .then(set((visibility(), internal(), read_only())))
         .then(ident())
-        .then(type_expr())
-        .then(default_value().or_not())
-        .then(example_value().or_not())
+        .then(nix_val().or_not())
+        .then(default_value())
+        .then(example_value())
         .map(
-            |(((((description, vis), name), nix_type), default), example))| {
-                let internal = vis.iter().any(|&v| v);
-                let read_only = vis.iter().any(|&v| !v);
+            |(
+                (
+                    (((description, (visible, internal, read_only)), name), nix_type),
+                    default_or_text,
+                ),
+                example,
+            )| {
+                let (default, default_text) = match default_or_text {
+                    Some(NixValOrText::NixVal(val)) => (Some(val), None),
+                    Some(NixValOrText::Text(val)) => (None, Some(val)),
+                    None => (None, None),
+                };
+
                 MkOption {
                     name,
                     default,
-                    default_text: "",
+                    default_text,
                     example,
                     description,
                     related_packages: Vec::new(),
-                    nix_type: Some(NixVal::Evaluatable(nix_type)),
+                    nix_type,
                     apply: None,
-                    internal: if internal { Some(true) } else { None },
-                    visible: None,
-                    read_only: if read_only { Some(true) } else { None },
+                    internal,
+                    visible,
+                    read_only,
                 }
             },
         )
@@ -134,6 +142,15 @@ fn visibility<'src>() -> impl Parser<'src, &'src str, Visibility> {
         .labelled("visibility")
 }
 
+fn ident<'src>() -> impl Parser<'src, &'src str, &'src str> {
+    none_of(':')
+        .repeated()
+        .to_slice()
+        .then_ignore(just(':'))
+        .padded()
+        .labelled("identifier")
+}
+
 fn description<'src>() -> impl Parser<'src, &'src str, Option<&'src str>> {
     just("///")
         .ignore_then(text::whitespace())
@@ -144,18 +161,27 @@ fn description<'src>() -> impl Parser<'src, &'src str, Option<&'src str>> {
         .labelled("comment")
 }
 
-fn default_value<'src>() -> impl Parser<'src, &'src str, Option<NixVal<'src>>> {
+#[derive(Debug, PartialEq, Eq)]
+enum NixValOrText<'src> {
+    Text(&'src str),
+    NixVal(NixVal<'src>),
+}
+
+fn default_value<'src>() -> impl Parser<'src, &'src str, Option<NixValOrText<'src>>> {
     just('=')
         .padded()
-        .ignore_then(nix_val())
+        .ignore_then(choice((
+            nix_val().map(NixValOrText::NixVal),
+            text().map(NixValOrText::Text),
+        )))
         .or_not()
         .labelled("default attribute value")
 }
 
-fn example_value<'src>() -> impl Parser<'src, &'src str, Option<NixVal<'src>>> {
+fn example_value<'src>() -> impl Parser<'src, &'src str, Option<&'src str>> {
     just('|')
         .padded()
-        .ignore_then(nix_val())
+        .ignore_then(text())
         .or_not()
         .labelled("example attribute value")
 }
@@ -168,31 +194,46 @@ fn nix_val<'src>() -> impl Parser<'src, &'src str, NixVal<'src>> {
         .labelled("nix literal value")
 }
 
+fn text<'src>() -> impl Parser<'src, &'src str, &'src str> {
+    just('"')
+        .ignore_then(none_of('"').repeated().to_slice())
+        .then_ignore(just('"'))
+        .labelled("string literal value")
+}
+
 mod tests {
     use super::*;
 
     #[test]
-    fn parses_valid_example() {
-        let result = example_value().parse(r#"| `lib.foo.bar [ 1 2 3 ]`"#);
+    fn parses_sample_option() {
+        let result = option_parser().parse("enable: `bool` = false");
 
         assert!(result.has_output());
         assert!(!result.has_errors());
-        assert_eq!(
-            result.into_result().unwrap(),
-            Some(NixVal::Evaluatable("lib.foo.bar [ 1 2 3 ]"))
-        );
+
+        let mk_option = result.into_result().unwrap();
+
+        assert_eq!(mk_option.name, "enable");
+        assert_eq!(mk_option.nix_type, Some(NixVal::Evaluatable("bool")));
+        assert_eq!(mk_option.default, Some(NixVal::Evaluatable("false")));
+    }
+
+    #[test]
+    fn parses_valid_example() {
+        let result = example_value().parse(r#"| "lib.foo.bar [ 1 2 3 ]""#);
+
+        assert!(result.has_output());
+        assert!(!result.has_errors());
+        assert_eq!(result.into_result().unwrap(), Some("lib.foo.bar [ 1 2 3 ]"));
     }
 
     #[test]
     fn parses_valid_example_long_whitespace() {
-        let result = example_value().parse(r#"|     `lib.foo.bar [ 1 2 3 ]`"#);
+        let result = example_value().parse(r#"|     "lib.foo.bar [ 1 2 3 ]""#);
 
         assert!(result.has_output());
         assert!(!result.has_errors());
-        assert_eq!(
-            result.into_result().unwrap(),
-            Some(NixVal::Evaluatable("lib.foo.bar [ 1 2 3 ]"))
-        );
+        assert_eq!(result.into_result().unwrap(), Some("lib.foo.bar [ 1 2 3 ]"));
     }
 
     #[test]
@@ -212,7 +253,7 @@ mod tests {
         assert!(!result.has_errors());
         assert_eq!(
             result.into_result().unwrap(),
-            Some(NixVal::Evaluatable("4"))
+            Some(NixValOrText::NixVal(NixVal::Evaluatable("4")))
         );
     }
 
@@ -224,7 +265,9 @@ mod tests {
         assert!(!result.has_errors());
         assert_eq!(
             result.into_result().unwrap(),
-            Some(NixVal::Evaluatable("lib.getExe pkgs.bash"))
+            Some(NixValOrText::NixVal(NixVal::Evaluatable(
+                "lib.getExe pkgs.bash"
+            )))
         );
     }
 
@@ -248,6 +291,23 @@ mod tests {
         assert!(!result.has_errors());
         assert_eq!(result.into_result().unwrap(), Some("is in doc comment"));
     }
+
+    #[test]
+    fn parses_valid_ident() {
+        let result = ident().parse("enable:");
+
+        assert!(result.has_output());
+        assert!(!result.has_errors());
+        assert_eq!(result.into_result().unwrap(), "enable");
+    }
+
+    #[test]
+    fn skips_missing_ident() {
+        let result = ident().parse("enable `bool` = false");
+
+        assert!(!result.has_output());
+        assert!(result.has_errors());
+    }
 }
 
 // let submodule = just("submodule")
@@ -266,4 +326,3 @@ mod tests {
 //         )
 //     })
 //     .map(|s: String| Box::leak(s.into_boxed_str()) as &'src str);
-

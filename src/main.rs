@@ -29,7 +29,14 @@ fn main() -> Result<()> {
         .read_to_string(&mut contents)
         .wrap_err("Could not read schemix input file")?;
 
-    println!("{:?}", schemix::parser().parse(&contents));
+    let result = schemix::parser().parse(&contents);
+    
+    if result.has_errors() {
+        schemix::parser::print_errors(&contents, result.errors().collect());
+        std::process::exit(1);
+    }
+
+    println!("{:?}", result.into_result());
 
     // let mut output = File::create(args.output).wrap_err("Could not create schemix output file")?;
 

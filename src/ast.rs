@@ -79,13 +79,13 @@ pub struct MkOption<'src> {
     pub apply: Option<NixVal<'src>>,
 
     /// Boolean — hides option from generated documentation
-    pub internal: Option<bool>,
+    pub internal: bool,
 
     /// Visibility control: true (default), false (hide + sub-options),"shallow" (hide sub-options only), "transparent" (hide self but not sub-options)
-    pub visible: Option<NixVal<'src>>,
+    pub visible: Visibility,
 
     /// Boolean option can only be set once
-    pub read_only: Option<bool>,
+    pub read_only: bool,
 }
 
 /// Schemix module definition
