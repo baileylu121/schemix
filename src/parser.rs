@@ -84,7 +84,7 @@ fn internal<'src>() -> impl Parser<'src, &'src str, bool, Extra<'src>> {
 }
 
 fn read_only<'src>() -> impl Parser<'src, &'src str, bool, Extra<'src>> {
-    choice((just("@read_only").then_ignore(text::whitespace()).to(true), just("").to(false)))
+    choice((just("@readonly").then_ignore(text::whitespace()).to(true), just("").to(false)))
         .labelled("if read only is enabled")
 }
 
