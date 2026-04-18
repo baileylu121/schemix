@@ -43,7 +43,8 @@ fn main() -> Result<()> {
 
     let exprs = exprs.unwrap_or_default();
 
-    let mut output_file = File::create(args.output).wrap_err("Could not create schemix output file")?;
+    let mut output_file =
+        File::create(args.output).wrap_err("Could not create schemix output file")?;
 
     for expr in &exprs {
         let rendered = expr.render()?;

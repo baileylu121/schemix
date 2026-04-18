@@ -44,16 +44,22 @@ fn module_parser<'src>() -> impl Parser<'src, &'src str, Expr<'src>, Extra<'src>
 
 fn option_parser<'src>() -> impl Parser<'src, &'src str, MkOption<'src>, Extra<'src>> {
     description()
-        .then(visibility())
         .then(internal())
         .then(read_only())
+        .then(visibility())
         .padded()
         .then(ident())
         .then(nix_val().or_not())
         .then(default_value())
         .then(example_value())
         .map(
-            |(((((((description, visible), internal), read_only), name), nix_type), default_or_text), example)| {
+            |(
+                (
+                    (((((description, internal), read_only), visible), name), nix_type),
+                    default_or_text,
+                ),
+                example,
+            )| {
                 let (default, default_text) = match default_or_text {
                     Some(NixValOrText::NixVal(val)) => (Some(val), None),
                     Some(NixValOrText::Text(val)) => (None, Some(val)),
@@ -79,12 +85,20 @@ fn option_parser<'src>() -> impl Parser<'src, &'src str, MkOption<'src>, Extra<'
 }
 
 fn internal<'src>() -> impl Parser<'src, &'src str, bool, Extra<'src>> {
-    choice((just("@internal").then_ignore(text::whitespace()).to(true), just("").to(false)))
+    just("@internal")
+        .to(true)
+        .then_ignore(text::whitespace())
+        .or_not()
+        .map(|opt| opt.unwrap_or(false))
         .labelled("if internal is enabled")
 }
 
 fn read_only<'src>() -> impl Parser<'src, &'src str, bool, Extra<'src>> {
-    choice((just("@readonly").then_ignore(text::whitespace()).to(true), just("").to(false)))
+    just("@readonly")
+        .to(true)
+        .then_ignore(text::whitespace())
+        .or_not()
+        .map(|opt| opt.unwrap_or(false))
         .labelled("if read only is enabled")
 }
 
@@ -94,8 +108,10 @@ fn visibility<'src>() -> impl Parser<'src, &'src str, Visibility, Extra<'src>> {
         just("@invisible").to(Visibility::Invisible),
         just("@shallow").to(Visibility::Shallow),
         just("@transparent").to(Visibility::Transparent),
-        just("").to(Visibility::Visible),
     ))
+    .then_ignore(text::whitespace())
+    .or_not()
+    .map(|opt| opt.unwrap_or(Visibility::Visible))
     .labelled("visibility")
 }
 
@@ -313,7 +329,7 @@ mod tests {
 
         assert!(result.has_output(), "Parse should succeed");
         assert!(!result.has_errors(), "Parse should have no errors");
-        
+
         let mk_option = result.into_result().unwrap();
         assert_eq!(mk_option.name, "debug");
         assert!(mk_option.internal);
