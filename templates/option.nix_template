@@ -1,0 +1,36 @@
+lib.mkOption {
+{%- if default.is_some() %}
+  default = {{ default.as_ref().unwrap() }};
+{%- endif %}
+{%- if default_text.is_some() %}
+  defaultText = lib.literalExpression "{{ default_text.as_ref().unwrap() }}";
+{%- endif %}
+{%- if example.is_some() %}
+  example = {{ example.as_ref().unwrap() }};
+{%- endif %}
+{%- if description.is_some() %}
+  description = "{{ description.as_ref().unwrap() }}";
+{%- endif %}
+{%- if !related_packages.is_empty() %}
+  relatedPackages = [
+{%- for pkg in related_packages %}
+    "{{ pkg }}"
+{%- endfor %}
+  ];
+{%- endif %}
+{%- if nix_type.is_some() %}
+  type = {{ nix_type.as_ref().unwrap() }};
+{%- endif %}
+{%- if apply.is_some() %}
+  apply = {{ apply.as_ref().unwrap() }};
+{%- endif %}
+{%- if internal %}
+  internal = true;
+{%- endif %}
+{%- if visible.to_string() != "true" %}
+  visible = {{ visible }};
+{%- endif %}
+{%- if read_only %}
+  readOnly = true;
+{%- endif %}
+}

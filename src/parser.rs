@@ -8,6 +8,7 @@ pub fn parser<'src>() -> impl Parser<'src, &'src str, Vec<Expr<'src>>, Extra<'sr
     choice((comment_parser(), module_parser()))
         .repeated()
         .collect()
+        .padded()
 }
 
 fn comment_parser<'src>() -> impl Parser<'src, &'src str, Expr<'src>, Extra<'src>> {
@@ -19,9 +20,10 @@ fn comment_parser<'src>() -> impl Parser<'src, &'src str, Expr<'src>, Extra<'src
 }
 
 fn module_parser<'src>() -> impl Parser<'src, &'src str, Expr<'src>, Extra<'src>> {
-    text::keyword("module")
+    description()
+        .then_ignore(text::keyword("module"))
         .padded()
-        .ignore_then(nix_val())
+        .then(nix_val())
         .padded()
         .then(
             option_parser()
@@ -30,25 +32,28 @@ fn module_parser<'src>() -> impl Parser<'src, &'src str, Expr<'src>, Extra<'src>
                 .padded()
                 .delimited_by(just("{"), just("}")),
         )
-        .map(|(name, options)| Expr::Module(Module { name, options }))
+        .map(|((description, name), options)| {
+            Expr::Module(Module {
+                description,
+                name,
+                options,
+            })
+        })
         .labelled("module definition")
 }
 
 fn option_parser<'src>() -> impl Parser<'src, &'src str, MkOption<'src>, Extra<'src>> {
     description()
-        .then(set((visibility(), internal(), read_only())))
+        .then(visibility())
+        .then(internal())
+        .then(read_only())
+        .padded()
         .then(ident())
         .then(nix_val().or_not())
         .then(default_value())
         .then(example_value())
         .map(
-            |(
-                (
-                    (((description, (visible, internal, read_only)), name), nix_type),
-                    default_or_text,
-                ),
-                example,
-            )| {
+            |(((((((description, visible), internal), read_only), name), nix_type), default_or_text), example)| {
                 let (default, default_text) = match default_or_text {
                     Some(NixValOrText::NixVal(val)) => (Some(val), None),
                     Some(NixValOrText::Text(val)) => (None, Some(val)),
@@ -74,34 +79,24 @@ fn option_parser<'src>() -> impl Parser<'src, &'src str, MkOption<'src>, Extra<'
 }
 
 fn internal<'src>() -> impl Parser<'src, &'src str, bool, Extra<'src>> {
-    text::keyword("@internal")
-        .padded()
-        .or_not()
-        .map(|opt| opt.is_some())
+    choice((just("@internal").then_ignore(text::whitespace()).to(true), just("").to(false)))
         .labelled("if internal is enabled")
 }
 
 fn read_only<'src>() -> impl Parser<'src, &'src str, bool, Extra<'src>> {
-    text::keyword("@read_only")
-        .padded()
-        .or_not()
-        .map(|opt| opt.is_some())
+    choice((just("@read_only").then_ignore(text::whitespace()).to(true), just("").to(false)))
         .labelled("if read only is enabled")
 }
 
 fn visibility<'src>() -> impl Parser<'src, &'src str, Visibility, Extra<'src>> {
-    let options = choice((
-        text::keyword("@visible"),
-        text::keyword("@invisible"),
-        text::keyword("@shallow"),
-        text::keyword("@transparent"),
-    ));
-
-    options
-        .padded()
-        .or_not()
-        .map(|x| x.and_then(|s: &str| s.parse().ok()).unwrap_or_default())
-        .labelled("visibility")
+    choice((
+        just("@visible").to(Visibility::Visible),
+        just("@invisible").to(Visibility::Invisible),
+        just("@shallow").to(Visibility::Shallow),
+        just("@transparent").to(Visibility::Transparent),
+        just("").to(Visibility::Visible),
+    ))
+    .labelled("visibility")
 }
 
 fn ident<'src>() -> impl Parser<'src, &'src str, &'src str, Extra<'src>> {
@@ -309,6 +304,19 @@ mod tests {
 
         assert!(!result.has_output());
         assert!(result.has_errors());
+    }
+
+    #[test]
+    fn parses_internal_option() {
+        let src = "@internal\ndebug: `bool`";
+        let result = option_parser().parse(src);
+
+        assert!(result.has_output(), "Parse should succeed");
+        assert!(!result.has_errors(), "Parse should have no errors");
+        
+        let mk_option = result.into_result().unwrap();
+        assert_eq!(mk_option.name, "debug");
+        assert!(mk_option.internal);
     }
 }
 

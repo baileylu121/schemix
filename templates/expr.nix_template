@@ -1,0 +1,6 @@
+{%- match self %}
+{%- when Expr::Module with (module) %}
+{{ module }}
+{%- when Expr::Comment with (comment) %}
+/* {{ comment }} */
+{%- endmatch %}

@@ -1,20 +1,20 @@
 /// A web server configuration module
-module services.nginx {
+module `services.nginx` {
     /// Whether to enable nginx
-    enable: bool = false,
+    enable: `bool` = `false`,
 
     /// Port to listen on
-    port: int = 80,
+    port: `int` = `80`,
 
     /// Server hostname
-    server_name: str = "localhost",
+    server_name: `str` = `"localhost"`,
 
     /// Document root
-    root: path,
+    root: `path`,
 
     /// Additional config key-values
-    extra_config: attrsOf str,
-    vhosts: listOf (submodule {
+    extra_config: `attrsOf str`,
+    vhosts: `listOf (submodule {
         /// Virtual host name
         name: str,
 
@@ -23,11 +23,11 @@ module services.nginx {
 
         /// Enable TLS
         ssl: bool = false,
-    }),
+    })`,
 
     /// Log verbosity
-    log_level: enum ["debug" "info" "warn" "error"] = "warn",
+    log_level: `enum ["debug" "info" "warn" "error"]` = `"warn"`,
 
     /// Bind address
-    @readonly bind_address: str = "0.0.0.0",
+    @readonly bind_address: `str` = `"0.0.0.0"`
 }

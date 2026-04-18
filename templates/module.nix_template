@@ -1,0 +1,19 @@
+{%- if description.is_some() %}
+/*
+{{ description.as_ref().unwrap() }}
+*/
+{%- endif %}
+{ config, lib, pkgs, ... }:
+{
+  options = {
+    {{ name }} = {
+{%- if options.is_empty() %}
+      _type = "option";
+{%- else %}
+{%- for option in options %}
+      {{ option.name }} = {{ option }};
+{%- endfor %}
+{%- endif %}
+    };
+  };
+}

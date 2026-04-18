@@ -1,5 +1,9 @@
-use std::str::FromStr;
+use std::{
+    fmt::{self, Display, Formatter},
+    str::FromStr,
+};
 
+use askama::Template;
 use thiserror::Error;
 
 /// The value of a nix expression
@@ -12,7 +16,17 @@ pub enum NixVal<'src> {
     Evaluatable(&'src str),
 }
 
-#[derive(Debug, Default)]
+impl<'src> Display for NixVal<'src> {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        let output = match self {
+            Self::Evaluatable(val) => val,
+        };
+
+        write!(f, "{}", output)
+    }
+}
+
+#[derive(Debug, Default, Clone)]
 pub enum Visibility {
     #[default]
     Visible,
@@ -51,8 +65,22 @@ impl FromStr for Visibility {
     }
 }
 
+impl Display for Visibility {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        let output = match self {
+            Self::Visible => "true",
+            Self::Invisible => "false",
+            Self::Shallow => "\"shallow\"",
+            Self::Transparent => "\"transparent\"",
+        };
+
+        write!(f, "{}", output)
+    }
+}
+
 /// Equivalent to `lib.mkOption`
-#[derive(Default, Debug)]
+#[derive(Default, Debug, Template)]
+#[template(path = "option.nix_template")]
 pub struct MkOption<'src> {
     /// Option name (e.g. "enable", "port")
     pub name: &'src str,
@@ -89,17 +117,22 @@ pub struct MkOption<'src> {
 }
 
 /// Schemix module definition
-#[derive(Debug)]
+#[derive(Debug, Template)]
+#[template(path = "module.nix_template")]
 pub struct Module<'src> {
     /// Option definitions for the module
     pub options: Vec<MkOption<'src>>,
 
     /// The generated name for the module
     pub name: NixVal<'src>,
+
+    /// The modules description
+    pub description: Option<&'src str>,
 }
 
 /// Schemix expression
-#[derive(Debug)]
+#[derive(Debug, Template)]
+#[template(path = "expr.nix_template")]
 pub enum Expr<'src> {
     /// Module definition
     Module(Module<'src>),
