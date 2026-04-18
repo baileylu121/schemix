@@ -30,13 +30,15 @@ fn main() -> Result<()> {
         .wrap_err("Could not read schemix input file")?;
 
     let result = schemix::parser().parse(&contents);
-    
-    if result.has_errors() {
-        schemix::parser::print_errors(&contents, result.errors().collect());
+    let (_output, errors) = result.into_output_errors();
+
+    if !errors.is_empty() {
+        schemix::error::print_errors(&contents, errors);
         std::process::exit(1);
     }
 
-    println!("{:?}", result.into_result());
+    // TODO: codegen
+    // println!("{:?}", output);
 
     // let mut output = File::create(args.output).wrap_err("Could not create schemix output file")?;
 

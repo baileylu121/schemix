@@ -2,19 +2,15 @@ use chumsky::prelude::*;
 
 use crate::ast::{Expr, MkOption, Module, NixVal, Visibility};
 
-pub fn parser<'src>() -> impl Parser<'src, &'src str, Vec<Expr<'src>>> {
-    let comment = comment_parser();
-    // let module = module_parser();
-    // choice((comment, module))
-    //     .padded_by(any().map(|_| ()))
-    //     .repeated()
-    //     .collect()
-    //
+type Extra<'src> = extra::Err<Rich<'src, char>>;
 
-    comment_parser().repeated().collect()
+pub fn parser<'src>() -> impl Parser<'src, &'src str, Vec<Expr<'src>>, Extra<'src>> {
+    choice((comment_parser(), module_parser()))
+        .repeated()
+        .collect()
 }
 
-fn comment_parser<'src>() -> impl Parser<'src, &'src str, Expr<'src>> {
+fn comment_parser<'src>() -> impl Parser<'src, &'src str, Expr<'src>, Extra<'src>> {
     just("//")
         .then(any().and_is(just('\n').not()).repeated())
         .padded()
@@ -22,57 +18,23 @@ fn comment_parser<'src>() -> impl Parser<'src, &'src str, Expr<'src>> {
         .labelled("comment")
 }
 
-// fn module_parser<'src>() -> impl Parser<'src, &'src str, Expr<'src>> {
-//     let ws = text::whitespace().ignored();
-//     text::keyword("module")
-//         .padded_by(text::whitespace())
-//         .then_ignore(text::whitespace().repeated())
-//         .ignore_then(dotted_name())
-//         .then_ignore(text::whitespace().repeated())
-//         .then(option_list())
-//         .padded_by(text::whitespace())
-//         .delimited_by(just("{"), just("}"))
-//         .map(|(name, options)| {
-//             Expr::Module(Module {
-//                 name: NixVal::Evaluatable(name),
-//                 options,
-//             })
-//         })
-//         .labelled("module definition")
-// }
-//
-// fn dotted_name<'src>() -> impl Parser<'src, &'src str, &'src str> {
-//     let ident = text::ascii::ident();
-//     let dot_ident = just('.').then(ident);
-//     ident
-//         .then(dot_ident.repeated())
-//         .map(|(first, rest): (&str, Vec<(&str, &str)>)| {
-//             let parts: Vec<&str> = std::iter::once(first)
-//                 .chain(rest.into_iter().map(|(_, id)| id))
-//                 .collect();
-//             let s = parts.join(".");
-//             Box::leak(s.into_boxed_str()) as &'src str
-//         })
-//         .labelled("dotted module name")
-// }
-//
-// fn option_list<'src>() -> impl Parser<'src, &'src str, Vec<MkOption<'src>>> {
-//     recursive::declare(|opt_list_ref| {
-//         let sep = just(',').padded_by(text::whitespace().or_not());
-//         let opt = option_parser();
-//
-//         opt.then(sep.then(opt).repeated().then(sep.or_not().ignored()))
-//             .map(|(first, (rest, _))| {
-//                 let mut items = vec![first];
-//                 for item in rest {
-//                     items.push(item);
-//                 }
-//                 items
-//             })
-//     })
-// }
-//
-fn option_parser<'src>() -> impl Parser<'src, &'src str, MkOption<'src>> {
+fn module_parser<'src>() -> impl Parser<'src, &'src str, Expr<'src>, Extra<'src>> {
+    text::keyword("module")
+        .padded()
+        .ignore_then(nix_val())
+        .padded()
+        .then(
+            option_parser()
+                .separated_by(just(','))
+                .collect::<Vec<_>>()
+                .padded()
+                .delimited_by(just("{"), just("}")),
+        )
+        .map(|(name, options)| Expr::Module(Module { name, options }))
+        .labelled("module definition")
+}
+
+fn option_parser<'src>() -> impl Parser<'src, &'src str, MkOption<'src>, Extra<'src>> {
     description()
         .then(set((visibility(), internal(), read_only())))
         .then(ident())
@@ -111,7 +73,7 @@ fn option_parser<'src>() -> impl Parser<'src, &'src str, MkOption<'src>> {
         .labelled("option")
 }
 
-fn internal<'src>() -> impl Parser<'src, &'src str, bool> {
+fn internal<'src>() -> impl Parser<'src, &'src str, bool, Extra<'src>> {
     text::keyword("@internal")
         .padded()
         .or_not()
@@ -119,7 +81,7 @@ fn internal<'src>() -> impl Parser<'src, &'src str, bool> {
         .labelled("if internal is enabled")
 }
 
-fn read_only<'src>() -> impl Parser<'src, &'src str, bool> {
+fn read_only<'src>() -> impl Parser<'src, &'src str, bool, Extra<'src>> {
     text::keyword("@read_only")
         .padded()
         .or_not()
@@ -127,7 +89,7 @@ fn read_only<'src>() -> impl Parser<'src, &'src str, bool> {
         .labelled("if read only is enabled")
 }
 
-fn visibility<'src>() -> impl Parser<'src, &'src str, Visibility> {
+fn visibility<'src>() -> impl Parser<'src, &'src str, Visibility, Extra<'src>> {
     let options = choice((
         text::keyword("@visible"),
         text::keyword("@invisible"),
@@ -142,7 +104,7 @@ fn visibility<'src>() -> impl Parser<'src, &'src str, Visibility> {
         .labelled("visibility")
 }
 
-fn ident<'src>() -> impl Parser<'src, &'src str, &'src str> {
+fn ident<'src>() -> impl Parser<'src, &'src str, &'src str, Extra<'src>> {
     none_of(':')
         .repeated()
         .to_slice()
@@ -151,7 +113,7 @@ fn ident<'src>() -> impl Parser<'src, &'src str, &'src str> {
         .labelled("identifier")
 }
 
-fn description<'src>() -> impl Parser<'src, &'src str, Option<&'src str>> {
+fn description<'src>() -> impl Parser<'src, &'src str, Option<&'src str>, Extra<'src>> {
     just("///")
         .ignore_then(text::whitespace())
         .then(none_of('\n').repeated().to_slice())
@@ -167,7 +129,7 @@ enum NixValOrText<'src> {
     NixVal(NixVal<'src>),
 }
 
-fn default_value<'src>() -> impl Parser<'src, &'src str, Option<NixValOrText<'src>>> {
+fn default_value<'src>() -> impl Parser<'src, &'src str, Option<NixValOrText<'src>>, Extra<'src>> {
     just('=')
         .padded()
         .ignore_then(choice((
@@ -178,7 +140,7 @@ fn default_value<'src>() -> impl Parser<'src, &'src str, Option<NixValOrText<'sr
         .labelled("default attribute value")
 }
 
-fn example_value<'src>() -> impl Parser<'src, &'src str, Option<&'src str>> {
+fn example_value<'src>() -> impl Parser<'src, &'src str, Option<&'src str>, Extra<'src>> {
     just('|')
         .padded()
         .ignore_then(text())
@@ -186,7 +148,7 @@ fn example_value<'src>() -> impl Parser<'src, &'src str, Option<&'src str>> {
         .labelled("example attribute value")
 }
 
-fn nix_val<'src>() -> impl Parser<'src, &'src str, NixVal<'src>> {
+fn nix_val<'src>() -> impl Parser<'src, &'src str, NixVal<'src>, Extra<'src>> {
     just('`')
         .ignore_then(none_of('`').repeated().to_slice())
         .then_ignore(just('`'))
@@ -194,7 +156,7 @@ fn nix_val<'src>() -> impl Parser<'src, &'src str, NixVal<'src>> {
         .labelled("nix literal value")
 }
 
-fn text<'src>() -> impl Parser<'src, &'src str, &'src str> {
+fn text<'src>() -> impl Parser<'src, &'src str, &'src str, Extra<'src>> {
     just('"')
         .ignore_then(none_of('"').repeated().to_slice())
         .then_ignore(just('"'))
@@ -205,17 +167,57 @@ mod tests {
     use super::*;
 
     #[test]
-    fn parses_sample_option() {
-        let result = option_parser().parse("enable: `bool` = false");
+    fn parses_sample_module() {
+        let src = r#"module `services.nginx` {
+            /// Enable the service
+            enable: `bool` = `false`,
 
-        assert!(result.has_output());
-        assert!(!result.has_errors());
+            /// X value
+            x: `int`
+        }"#;
+        let result = module_parser().parse(src);
+
+        if result.has_errors() {
+            crate::error::print_errors(src, result.into_errors());
+            panic!("parse failed — see ariadne report above");
+        }
+    }
+
+    #[test]
+    fn parses_sample_option() {
+        let src = "enable: `bool` = `false`";
+        let result = option_parser().parse(src);
+
+        if result.has_errors() {
+            crate::error::print_errors(src, result.into_errors());
+            panic!("parse failed — see ariadne report above");
+        }
 
         let mk_option = result.into_result().unwrap();
 
         assert_eq!(mk_option.name, "enable");
         assert_eq!(mk_option.nix_type, Some(NixVal::Evaluatable("bool")));
         assert_eq!(mk_option.default, Some(NixVal::Evaluatable("false")));
+    }
+
+    #[test]
+    fn parses_sample_option_with_description() {
+        let src = "/// enable x service
+            enable: `bool` = `false`";
+
+        let result = option_parser().parse(src);
+
+        if result.has_errors() {
+            crate::error::print_errors(src, result.into_errors());
+            panic!("parse failed — see ariadne report above");
+        }
+
+        let mk_option = result.into_result().unwrap();
+
+        assert_eq!(mk_option.name, "enable");
+        assert_eq!(mk_option.nix_type, Some(NixVal::Evaluatable("bool")));
+        assert_eq!(mk_option.default, Some(NixVal::Evaluatable("false")));
+        assert_eq!(mk_option.description, Some("enable x service"));
     }
 
     #[test]
@@ -303,7 +305,7 @@ mod tests {
 
     #[test]
     fn skips_missing_ident() {
-        let result = ident().parse("enable `bool` = false");
+        let result = ident().parse("enable `bool` = `false`");
 
         assert!(!result.has_output());
         assert!(result.has_errors());
